@@ -16,7 +16,7 @@ public abstract class SmartPantryDatabase extends RoomDatabase {
         if (instance == null) {
             instance = Room.databaseBuilder(context.getApplicationContext(),
                             SmartPantryDatabase.class, "smart_pantry.db")
-                    .allowMainThreadQueries() // Used for this assignment to keep the database code simple.
+                    .allowMainThreadQueries()
                     .build();
         }
         return instance;

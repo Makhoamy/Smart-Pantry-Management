@@ -1,12 +1,16 @@
 package com.example.smartpantrymanager;
 
 import android.os.Bundle;
+import android.widget.TextView;
 
 import androidx.activity.EdgeToEdge;
-import android.widget.TextView;
 import androidx.appcompat.app.AppCompatActivity;
+
 import java.util.List;
+
 public class RecipeDetailActivity extends AppCompatActivity {
+
+    public static final String EXTRA_RECIPE_ID = "recipe_id";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -18,7 +22,7 @@ public class RecipeDetailActivity extends AppCompatActivity {
         getSupportActionBar().setDisplayHomeAsUpEnabled(true);
 
         SmartPantryDatabase db = SmartPantryDatabase.getInstance(this);
-        int recipeId = getIntent().getIntExtra("recipe_id", -1);
+        int recipeId = getIntent().getIntExtra(EXTRA_RECIPE_ID, -1);
         Recipe recipe = db.recipeDao().getById(recipeId);
         if (recipe == null) {
             finish();
@@ -40,9 +44,5 @@ public class RecipeDetailActivity extends AppCompatActivity {
     public boolean onSupportNavigateUp() {
         finish();
         return true;
-    }
-}
-
-
     }
 }
