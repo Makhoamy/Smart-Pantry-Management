@@ -1,31 +1,36 @@
 package com.example.smartpantrymanager;
 
 import android.app.DatePickerDialog;
+import android.content.DialogInterface;
 import android.os.Bundle;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.Spinner;
 import android.widget.Toast;
+
 import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
 
-import com.google.android.material.textfield.TextInputEditText;
-import com.google.android.material.textfield.TextInputLayout;
-import java.util.Arrays;
-import java.util.Calendar;
-import java.util.List;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.Locale;
 
 public class AddEditIngredientActivity extends AppCompatActivity {
 
-    private static final List<String> UNITS = Arrays.asList("g", "kg", "ml", "l", "pcs", "tbsp", "tsp");
+    private EditText etName;
+    private EditText etQuantity;
+    private EditText etExpiry;
+    private Spinner spUnit;
+    private Button btnSave;
 
     private SmartPantryDatabase db;
-    private TextInputLayout tilName, tilQuantity;
-    private TextInputEditText etName, etQuantity, etExpiry;
-    private Spinner spUnit;
+    private PantryItem pantryItem;
     private int itemId = -1;
-    private PantryItem existing;
+
+    private String[] units = {
+            "pcs", "g", "kg", "ml", "L", "cups", "tbsp", "tsp"
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -33,92 +38,194 @@ public class AddEditIngredientActivity extends AppCompatActivity {
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_add_edit_ingredient);
         NavigationHelper.applyInsets(this);
+
+        // Attach the toolbar so it shows a title and a back arrow.
         setSupportActionBar(findViewById(R.id.toolbar));
         getSupportActionBar().setDisplayHomeAsUpEnabled(true);
 
         db = SmartPantryDatabase.getInstance(this);
-        tilName = findViewById(R.id.tilName);
-        tilQuantity = findViewById(R.id.tilQuantity);
+
         etName = findViewById(R.id.etName);
         etQuantity = findViewById(R.id.etQuantity);
         etExpiry = findViewById(R.id.etExpiry);
         spUnit = findViewById(R.id.spUnit);
-        Button btnSave = findViewById(R.id.btnSave);
+        btnSave = findViewById(R.id.btnSave);
 
-        spUnit.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, UNITS));
+        ArrayAdapter<String> unitAdapter = new ArrayAdapter<>(
+                this,
+                android.R.layout.simple_spinner_item,
+                units
+        );
+
+        unitAdapter.setDropDownViewResource(
+                android.R.layout.simple_spinner_dropdown_item
+        );
+
+        spUnit.setAdapter(unitAdapter);
+
         etExpiry.setOnClickListener(v -> showDatePicker());
 
         itemId = getIntent().getIntExtra("item_id", -1);
+
         if (itemId != -1) {
             getSupportActionBar().setTitle("Edit ingredient");
-            existing = db.pantryDao().getById(itemId);
-            if (existing != null) {
-                etName.setText(existing.name);
-                etQuantity.setText(NavigationHelper.formatQuantity(existing.quantity));
-                etExpiry.setText(existing.expiryDate);
-                spUnit.setSelection(Math.max(0, UNITS.indexOf(existing.unit)));
-            }
+            loadIngredient();
         } else {
             getSupportActionBar().setTitle("Add ingredient");
         }
 
-        btnSave.setOnClickListener(v -> save());
-    }
-
-    private void showDatePicker() {
-        Calendar c = Calendar.getInstance();
-        new DatePickerDialog(this, (view, y, m, d) ->
-                etExpiry.setText(String.format(Locale.US, "%04d-%02d-%02d", y, m + 1, d)),
-                c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH)).show();
-    }
-
-    private boolean validate() {
-        boolean ok = true;
-
-        String name = etName.getText().toString().trim();
-        if (name.isEmpty()) {
-            tilName.setError("Enter an ingredient name");
-            ok = false;
-        } else {
-            tilName.setError(null);
-        }
-
-        double qty = 0;
-        try {
-            qty = Double.parseDouble(etQuantity.getText().toString().trim());
-        } catch (NumberFormatException e) {
-            qty = 0;
-        }
-        if (qty <= 0) {
-            tilQuantity.setError("Enter a quantity greater than 0");
-            ok = false;
-        } else {
-            tilQuantity.setError(null);
-        }
-        return ok;
-    }
-
-    private void save() {
-        if (!validate()) return;
-
-        PantryItem item = (existing != null) ? existing : new PantryItem();
-        item.name = etName.getText().toString().trim();
-        item.quantity = Double.parseDouble(etQuantity.getText().toString().trim());
-        item.unit = spUnit.getSelectedItem().toString();
-        item.expiryDate = etExpiry.getText().toString().trim();
-
-        if (existing != null) {
-            db.pantryDao().update(item);
-        } else {
-            db.pantryDao().insert(item);
-        }
-        Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show();
-        finish();
+        btnSave.setOnClickListener(v -> saveIngredient());
     }
 
     @Override
     public boolean onSupportNavigateUp() {
         finish();
         return true;
+    }
+
+    private void showDatePicker() {
+        // Start on the date already chosen, otherwise on today.
+        LocalDate start = LocalDate.now();
+
+        try {
+            String current = etExpiry.getText().toString().trim();
+            if (!current.isEmpty()) {
+                start = LocalDate.parse(current);
+            }
+        } catch (DateTimeParseException e) {
+            // Keep today's date.
+        }
+
+        DatePickerDialog datePicker = new DatePickerDialog(
+                this,
+                (view, year, month, dayOfMonth) -> {
+                    // Locale.ROOT keeps ASCII digits so the date can always
+                    // be parsed again (yyyy-MM-dd).
+                    String date = String.format(
+                            Locale.ROOT,
+                            "%04d-%02d-%02d",
+                            year,
+                            month + 1,
+                            dayOfMonth
+                    );
+
+                    etExpiry.setText(date);
+                },
+                start.getYear(),
+                start.getMonthValue() - 1,
+                start.getDayOfMonth()
+        );
+
+        // The expiry date is optional, so allow it to be removed again.
+        datePicker.setButton(DialogInterface.BUTTON_NEUTRAL, "Clear",
+                (dialog, which) -> etExpiry.setText(""));
+
+        datePicker.show();
+    }
+
+    private void loadIngredient() {
+        pantryItem = db.pantryDao().getById(itemId);
+
+        if (pantryItem == null) {
+            Toast.makeText(this, "Ingredient not found",
+                    Toast.LENGTH_SHORT).show();
+            finish();
+            return;
+        }
+
+        etName.setText(pantryItem.name);
+        etQuantity.setText(plainNumber(pantryItem.quantity));
+
+        etExpiry.setText(
+                pantryItem.expiryDate == null ? "" : pantryItem.expiryDate
+        );
+
+        for (int i = 0; i < units.length; i++) {
+            if (units[i].equalsIgnoreCase(pantryItem.unit)) {
+                spUnit.setSelection(i);
+                break;
+            }
+        }
+    }
+
+    // 2.0 -> "2", 0.5 -> "0.5" (always uses a dot so it can be parsed back).
+    private static String plainNumber(double value) {
+        if (value == Math.rint(value) && Math.abs(value) < 1e15) {
+            return String.valueOf((long) value);
+        }
+        return String.valueOf(value);
+    }
+
+    private void saveIngredient() {
+        String name = etName.getText().toString().trim();
+        // Accept a decimal comma as well as a decimal point.
+        String quantityText = etQuantity.getText().toString().trim()
+                .replace(',', '.');
+        String unit = spUnit.getSelectedItem().toString();
+        String expiryDate = etExpiry.getText().toString().trim();
+
+        if (name.isEmpty()) {
+            etName.setError("Enter an ingredient name");
+            etName.requestFocus();
+            return;
+        }
+
+        // A name made only of digits or symbols can never match a recipe.
+        if (!name.matches(".*\\p{L}.*")) {
+            etName.setError("Enter a valid ingredient name");
+            etName.requestFocus();
+            return;
+        }
+
+        if (quantityText.isEmpty()) {
+            etQuantity.setError("Enter a quantity");
+            etQuantity.requestFocus();
+            return;
+        }
+
+        double quantity;
+
+        try {
+            quantity = Double.parseDouble(quantityText);
+        } catch (NumberFormatException e) {
+            etQuantity.setError("Enter a valid quantity");
+            etQuantity.requestFocus();
+            return;
+        }
+
+        if (Double.isNaN(quantity) || Double.isInfinite(quantity)) {
+            etQuantity.setError("Enter a valid quantity");
+            etQuantity.requestFocus();
+            return;
+        }
+
+        if (quantity <= 0) {
+            etQuantity.setError("Quantity must be greater than zero");
+            etQuantity.requestFocus();
+            return;
+        }
+
+        if (pantryItem == null) {
+            pantryItem = new PantryItem();
+        }
+
+        pantryItem.name = name;
+        pantryItem.quantity = quantity;
+        pantryItem.unit = unit;
+        pantryItem.expiryDate = expiryDate.isEmpty() ? null : expiryDate;
+
+        if (itemId == -1) {
+            db.pantryDao().insert(pantryItem);
+
+            Toast.makeText(this, "Ingredient added",
+                    Toast.LENGTH_SHORT).show();
+        } else {
+            db.pantryDao().update(pantryItem);
+
+            Toast.makeText(this, "Ingredient updated",
+                    Toast.LENGTH_SHORT).show();
+        }
+
+        finish();
     }
 }

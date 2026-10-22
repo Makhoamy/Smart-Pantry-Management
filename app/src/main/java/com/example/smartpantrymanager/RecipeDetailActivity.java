@@ -31,10 +31,11 @@ public class RecipeDetailActivity extends AppCompatActivity {
         getSupportActionBar().setTitle(recipe.name);
 
         List<RecipeIngredient> ingredients = db.recipeDao().getIngredients(recipeId);
+        boolean metric=Prefs.isMetric(this);
         StringBuilder sb = new StringBuilder();
         for (RecipeIngredient ri : ingredients) {
             sb.append("\u2022 ").append(ri.name).append(" - ")
-                    .append(NavigationHelper.formatQuantity(ri.quantity)).append(" ").append(ri.unit).append("\n");
+                    .append(UnitDisplay.format(metric, ri.quantity, ri.unit)).append("\n");
         }
         ((TextView) findViewById(R.id.tvIngredients)).setText(sb.toString().trim());
         ((TextView) findViewById(R.id.tvSteps)).setText(recipe.steps);

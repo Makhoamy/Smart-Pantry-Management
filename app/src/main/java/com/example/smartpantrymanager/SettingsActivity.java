@@ -3,6 +3,7 @@ package com.example.smartpantrymanager;
 
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.widget.CompoundButton;
 import android.widget.RadioButton;
 import android.widget.Toast;
 
@@ -10,7 +11,6 @@ import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 
-import com.google.android.material.switchmaterial.SwitchMaterial;
 
 public class SettingsActivity extends AppCompatActivity {
 
@@ -25,12 +25,12 @@ public class SettingsActivity extends AppCompatActivity {
 
         if (toolbar != null) {
             setSupportActionBar(toolbar);
-            toolbar.setTitle("Settings");
+            getSupportActionBar().setTitle("Settings");
         }
 
         SharedPreferences prefs = Prefs.get(this);
 
-        SwitchMaterial swAlerts = findViewById(R.id.swAlerts);
+        CompoundButton swAlerts = findViewById(R.id.swAlerts);
         RadioButton rbMetric = findViewById(R.id.rbMetric);
         RadioButton rbImperial = findViewById(R.id.rbImperial);
 

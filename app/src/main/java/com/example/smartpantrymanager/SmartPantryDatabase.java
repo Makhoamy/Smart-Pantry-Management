@@ -11,12 +11,13 @@ public abstract class SmartPantryDatabase extends RoomDatabase {
     public abstract RecipeDataDao recipeDao();
 
     private static SmartPantryDatabase instance;
-
+    @SuppressWarnings("deprecation")
     public static synchronized SmartPantryDatabase getInstance(Context context) {
         if (instance == null) {
             instance = Room.databaseBuilder(context.getApplicationContext(),
                             SmartPantryDatabase.class, "smart_pantry.db")
                     .allowMainThreadQueries()
+                    .fallbackToDestructiveMigration()
                     .build();
         }
         return instance;
@@ -26,7 +27,9 @@ public abstract class SmartPantryDatabase extends RoomDatabase {
     public static void seedIfEmpty(SmartPantryDatabase db) {
         RecipeDataDao dao = db.recipeDao();
         if (dao.count() > 0) return;
-
+        db.runInTransaction(()-> insertSampleRecipes(dao));
+    }
+    private static void insertSampleRecipes(RecipeDataDao dao){
         // I use lowercase ingredient names to make matching easier.
         addRecipe(dao, "Tomato omelette",
                 "1. Whisk the eggs with salt.\n2. Chop the tomato.\n3. Cook everything in a pan for 3 minutes.",
