@@ -2,48 +2,53 @@ package com.example.smartpantrymanager;
 
 import android.os.Bundle;
 import android.widget.TextView;
-
-import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
-
+import com.google.android.material.button.MaterialButton;
 import java.util.List;
 
 public class RecipeDetailActivity extends AppCompatActivity {
-
-    public static final String EXTRA_RECIPE_ID = "recipe_id";
+    private PantryDatabase database;
+    private int recipeId;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        EdgeToEdge.enable(this);
         setContentView(R.layout.activity_recipe_detail);
-        NavigationHelper.applyInsets(this);
-        setSupportActionBar(findViewById(R.id.toolbar));
-        getSupportActionBar().setDisplayHomeAsUpEnabled(true);
 
-        SmartPantryDatabase db = SmartPantryDatabase.getInstance(this);
-        int recipeId = getIntent().getIntExtra(EXTRA_RECIPE_ID, -1);
-        Recipe recipe = db.recipeDao().getById(recipeId);
-        if (recipe == null) {
-            finish();
-            return;
-        }
-        getSupportActionBar().setTitle(recipe.name);
+        database = PantryDatabase.getInstance(this);
+        recipeId = getIntent().getIntExtra("recipe_id", -1);
 
-        List<RecipeIngredient> ingredients = db.recipeDao().getIngredients(recipeId);
-        boolean metric=Prefs.isMetric(this);
-        StringBuilder sb = new StringBuilder();
-        for (RecipeIngredient ri : ingredients) {
-            sb.append("\u2022 ").append(ri.name).append(" - ")
-                    .append(UnitDisplay.format(metric, ri.quantity, ri.unit)).append("\n");
-        }
-        ((TextView) findViewById(R.id.tvIngredients)).setText(sb.toString().trim());
-        ((TextView) findViewById(R.id.tvSteps)).setText(recipe.steps);
+        MaterialButton back = findViewById(R.id.recipeDetailBackButton);
+        back.setOnClickListener(v -> finish());
+        loadRecipe();
     }
 
-    @Override
-    public boolean onSupportNavigateUp() {
-        finish();
-        return true;
+    private void loadRecipe() {
+        AppExecutors.DATABASE_EXECUTOR.execute(() -> {
+            Recipe recipe = database.recipeDao().getRecipeById(recipeId);
+            List<RecipeIngredient> ingredients =
+                    database.recipeIngredientDao().getIngredientsForRecipe(recipeId);
+
+            runOnUiThread(() -> {
+                if (recipe == null) {
+                    finish();
+                    return;
+                }
+
+                ((TextView) findViewById(R.id.recipeDetailName)).setText(recipe.getName());
+                ((TextView) findViewById(R.id.recipeDetailInstructions)).setText(recipe.getInstructions());
+
+                StringBuilder text = new StringBuilder();
+                for (RecipeIngredient ingredient : ingredients) {
+                    text.append("• ")
+                            .append(ingredient.getIngredientName())
+                            .append(" — ")
+                            .append(UnitFormatter.format(this,
+                                    ingredient.getRequiredQuantity(), ingredient.getUnit()))
+                            .append("\n");
+                }
+                ((TextView) findViewById(R.id.recipeDetailIngredients)).setText(text.toString().trim());
+            });
+        });
     }
 }

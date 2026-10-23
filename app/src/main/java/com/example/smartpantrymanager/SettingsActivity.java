@@ -1,80 +1,52 @@
-
 package com.example.smartpantrymanager;
 
 import android.content.SharedPreferences;
 import android.os.Bundle;
-import android.widget.CompoundButton;
-import android.widget.RadioButton;
+import android.widget.RadioGroup;
 import android.widget.Toast;
-
-import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.appcompat.widget.Toolbar;
-
+import androidx.appcompat.widget.SwitchCompat;
+import com.google.android.material.appbar.MaterialToolbar;
+import com.google.android.material.button.MaterialButton;
 
 public class SettingsActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        EdgeToEdge.enable(this);
         setContentView(R.layout.activity_settings);
-        NavigationHelper.applyInsets(this);
 
-        Toolbar toolbar = findViewById(R.id.toolbar);
+        MaterialToolbar toolbar = findViewById(R.id.toolbar);
+        toolbar.setTitle("Settings");
+        toolbar.setNavigationIcon(androidx.appcompat.R.drawable.abc_ic_ab_back_material);
+        toolbar.setNavigationOnClickListener(v -> finish());
 
-        if (toolbar != null) {
-            setSupportActionBar(toolbar);
-            getSupportActionBar().setTitle("Settings");
-        }
+        SharedPreferences preferences =
+                getSharedPreferences(UnitFormatter.PREFS_NAME, MODE_PRIVATE);
 
-        SharedPreferences prefs = Prefs.get(this);
+        SwitchCompat alertsSwitch = findViewById(R.id.swAlerts);
+        RadioGroup unitsGroup = findViewById(R.id.rgUnits);
+        MaterialButton applyButton = findViewById(R.id.btnApplySettings);
 
-        CompoundButton swAlerts = findViewById(R.id.swAlerts);
-        RadioButton rbMetric = findViewById(R.id.rbMetric);
-        RadioButton rbImperial = findViewById(R.id.rbImperial);
+        // Show the saved choices.
+        alertsSwitch.setChecked(preferences.getBoolean(UnitFormatter.KEY_EXPIRY_ALERTS, true));
+        boolean imperial = UnitFormatter.IMPERIAL.equals(
+                preferences.getString(UnitFormatter.KEY_UNITS, UnitFormatter.METRIC));
+        unitsGroup.check(imperial ? R.id.rbImperial : R.id.rbMetric);
 
-        // Load the saved settings.
-        swAlerts.setChecked(Prefs.alertsEnabled(this));
-
-        if (Prefs.isMetric(this)) {
-            rbMetric.setChecked(true);
-        } else {
-            rbImperial.setChecked(true);
-        }
-
-        // Save the expiry alert preference.
-        swAlerts.setOnCheckedChangeListener((button, checked) -> {
-            prefs.edit()
-                    .putBoolean(Prefs.KEY_ALERTS, checked)
+        // Nothing is saved until the button is pressed.
+        applyButton.setOnClickListener(v -> {
+            boolean useImperial = unitsGroup.getCheckedRadioButtonId() == R.id.rbImperial;
+            preferences.edit()
+                    .putString(UnitFormatter.KEY_UNITS,
+                            useImperial ? UnitFormatter.IMPERIAL : UnitFormatter.METRIC)
+                    .putBoolean(UnitFormatter.KEY_EXPIRY_ALERTS, alertsSwitch.isChecked())
                     .apply();
-
-            String message = checked
-                    ? "Expiry alerts enabled"
-                    : "Expiry alerts disabled";
-
-            Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
-        });
-
-        // Save the selected measurement unit preference.
-        rbMetric.setOnClickListener(v -> {
-            prefs.edit()
-                    .putString(Prefs.KEY_UNITS, Prefs.UNITS_METRIC)
-                    .apply();
-
-            Toast.makeText(this, "Metric units selected",
+            Toast.makeText(this,
+                    (useImperial ? "Imperial" : "Metric") + " units applied",
                     Toast.LENGTH_SHORT).show();
         });
 
-        rbImperial.setOnClickListener(v -> {
-            prefs.edit()
-                    .putString(Prefs.KEY_UNITS, Prefs.UNITS_IMPERIAL)
-                    .apply();
-
-            Toast.makeText(this, "Imperial units selected",
-                    Toast.LENGTH_SHORT).show();
-        });
-
-        NavigationHelper.setupBottomNav(this, R.id.nav_settings);
+        BottomNav.setup(this, R.id.nav_settings);
     }
 }

@@ -4,79 +4,69 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.TextView;
-
-import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.appcompat.widget.Toolbar;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
-
+import com.google.android.material.button.MaterialButton;
+import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
-public class SuggestedRecipesActivity extends AppCompatActivity implements RecipeAdapter.Listener {
-
-    private SmartPantryDatabase db;
+/** Recipes you can cook right now, with the ones using soon-to-expire items first. */
+public class SuggestedRecipesActivity extends AppCompatActivity {
+    private PantryDatabase database;
     private RecipeAdapter adapter;
-    private TextView tvEmpty;
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private TextView emptyText;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        EdgeToEdge.enable(this);
         setContentView(R.layout.activity_suggested_recipes);
-        NavigationHelper.applyInsets(this);
 
-        Toolbar toolbar = findViewById(R.id.toolbar);
-        if (toolbar != null) {
-            setSupportActionBar(toolbar);
-        }
+        database = PantryDatabase.getInstance(this);
+        emptyText = findViewById(R.id.noRecipesText);
+        RecyclerView recyclerView = findViewById(R.id.recipesRecyclerView);
 
-        db = SmartPantryDatabase.getInstance(this);
-        tvEmpty = findViewById(R.id.tvEmpty);
-        RecyclerView recycler = findViewById(R.id.recyclerRecipes);
-        recycler.setLayoutManager(new LinearLayoutManager(this));
-        adapter = new RecipeAdapter(this);
-        recycler.setAdapter(adapter);
+        adapter = new RecipeAdapter(recipe -> {
+            Intent intent = new Intent(this, RecipeDetailActivity.class);
+            intent.putExtra("recipe_id", recipe.getId());
+            startActivity(intent);
+        });
 
-        NavigationHelper.setupBottomNav(this, R.id.nav_recipes);
+        recyclerView.setLayoutManager(new LinearLayoutManager(this));
+        recyclerView.setAdapter(adapter);
+
+        MaterialButton back = findViewById(R.id.backToPantryButton);
+        back.setOnClickListener(v -> finish());
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        loadRecipes();
+        loadSuggestions();
     }
 
-    private void loadRecipes() {
-        // Database work happens on a background thread
-        executor.execute(() -> {
-            List<PantryItem> pantry = db.pantryDao().getAll();
-            List<Recipe> matches = RecipeMatcher.findStrictMatches(pantry, db);
+    private void loadSuggestions() {
+        AppExecutors.DATABASE_EXECUTOR.execute(() -> {
+            RecipeSeeder.seedIfNeeded(database);
+            List<Recipe> recipes = database.recipeDao().getAllRecipes();
+            List<RecipeIngredient> requirements = database.recipeIngredientDao().getAllRecipeIngredients();
+            List<PantryItem> pantry = database.pantryItemDao().getAllItems();
 
-            // UI updates must go back on the main thread
+            List<ExpiryRecipeSuggester.Suggestion> suggestions =
+                    ExpiryRecipeSuggester.suggest(recipes, requirements, pantry, LocalDate.now());
+
+            List<Recipe> ordered = new ArrayList<>();
+            List<String> reasons = new ArrayList<>();
+            for (ExpiryRecipeSuggester.Suggestion s : suggestions) {
+                ordered.add(s.recipe);
+                reasons.add(s.reason);
+            }
+
             runOnUiThread(() -> {
-                if (isFinishing() || isDestroyed()) {
-                    return;
-                }
-                adapter.setRecipes(matches);
-                tvEmpty.setVisibility(matches.isEmpty() ? View.VISIBLE : View.GONE);
+                adapter.setRecipes(ordered, reasons);
+                emptyText.setVisibility(ordered.isEmpty() ? View.VISIBLE : View.GONE);
             });
         });
-    }
-
-    @Override
-    public void onRecipeClick(Recipe recipe) {
-        Intent intent = new Intent(this, RecipeDetailActivity.class);
-        intent.putExtra(RecipeDetailActivity.EXTRA_RECIPE_ID, recipe.id);
-        startActivity(intent);
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        executor.shutdown();
     }
 }

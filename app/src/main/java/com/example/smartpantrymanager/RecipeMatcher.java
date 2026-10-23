@@ -1,273 +1,130 @@
 package com.example.smartpantrymanager;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 
 public class RecipeMatcher {
 
-    // Return only recipes that can be made with the current pantry.
     public static List<Recipe> findStrictMatches(
-            List<PantryItem> pantry,
-            SmartPantryDatabase db) {
-
-        Map<String, Double> available = new HashMap<>();
-
-        // Add together quantities of the same ingredient.
-        for (PantryItem item : pantry) {
-
-            if (item.name == null || item.quantity <= 0
-                    || Double.isNaN(item.quantity)
-                    || Double.isInfinite(item.quantity)) {
-                continue;
-            }
-
-            String name = normalizeName(item.name);
-            String dimension = getDimension(item.unit);
-
-            if (name.isEmpty() || dimension.equals("unknown")) {
-                continue;
-            }
-
-            String key = name + "|" + dimension;
-            double quantity = convertToBase(item.quantity, item.unit);
-
-            available.put(key,
-                    available.getOrDefault(key, 0.0) + quantity);
-        }
+            List<Recipe> recipes,
+            List<RecipeIngredient> allRequirements,
+            List<PantryItem> pantryItems) {
 
         List<Recipe> matches = new ArrayList<>();
-        List<Recipe> recipes = db.recipeDao().getAllRecipes();
 
-        // Check every recipe.
         for (Recipe recipe : recipes) {
-
-            List<RecipeIngredient> ingredients =
-                    db.recipeDao().getIngredients(recipe.id);
-
-            // Do not suggest a recipe without ingredients.
-            if (ingredients == null || ingredients.isEmpty()) {
-                continue;
+            List<RecipeIngredient> required = new ArrayList<>();
+            for (RecipeIngredient ingredient : allRequirements) {
+                if (ingredient.getRecipeId() == recipe.getId()) {
+                    required.add(ingredient);
+                }
             }
+
+            if (required.isEmpty()) continue;
 
             boolean canMake = true;
+            for (RecipeIngredient requirement : required) {
+                double available = getAvailableQuantity(
+                        pantryItems, requirement.getIngredientName(), requirement.getUnit());
 
-            for (RecipeIngredient ingredient : ingredients) {
-
-                if (ingredient.name == null
-                        || ingredient.quantity <= 0
-                        || Double.isNaN(ingredient.quantity)
-                        || Double.isInfinite(ingredient.quantity)) {
-                    canMake = false;
-                    break;
-                }
-
-                String name = normalizeName(ingredient.name);
-                String dimension = getDimension(ingredient.unit);
-
-                // An unsupported unit cannot be safely compared.
-                if (name.isEmpty() || dimension.equals("unknown")) {
-                    canMake = false;
-                    break;
-                }
-
-                String key = name + "|" + dimension;
-
-                double required = convertToBase(
-                        ingredient.quantity, ingredient.unit);
-
-                double have = available.getOrDefault(key, 0.0);
-
-                // Every ingredient must be available in full.
-                if (have + 0.000001 < required) {
+                if (available < requirement.getRequiredQuantity()) {
                     canMake = false;
                     break;
                 }
             }
 
-            // Add only complete matches.
-            if (canMake) {
-                matches.add(recipe);
-            }
+            if (canMake) matches.add(recipe);
         }
 
         return matches;
     }
 
-    // Make simple ingredient names consistent.
-    public static String normalizeName(String name) {
+    /** True if this pantry item can supply the given recipe requirement (same name, compatible unit). */
+    public static boolean usesItem(RecipeIngredient requirement, PantryItem item) {
+        return sameIngredient(item.getName(), requirement.getIngredientName())
+                && compatibleUnit(item.getUnit(), requirement.getUnit());
+    }
 
-        if (name == null) {
-            return "";
+    private static double getAvailableQuantity(List<PantryItem> pantry,
+                                               String requiredName, String requiredUnit) {
+        double total = 0;
+
+        for (PantryItem item : pantry) {
+            if (sameIngredient(item.getName(), requiredName)
+                    && compatibleUnit(item.getUnit(), requiredUnit)) {
+                total += convertQuantity(item.getQuantity(), item.getUnit(), requiredUnit);
+            }
         }
+        return total;
+    }
 
-        String n = name.trim()
-                .toLowerCase(Locale.ROOT)
+    private static boolean sameIngredient(String first, String second) {
+        return normalize(first).equals(normalize(second));
+    }
+
+    private static String normalize(String name) {
+        if (name == null) return "";
+        String value = name.trim().toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9 ]", "")
                 .replaceAll("\\s+", " ");
 
-        // Handle common irregular plurals.
-        if (n.equals("potatoes")) return "potato";
-        if (n.equals("tomatoes")) return "tomato";
-        if (n.equals("leaves")) return "leaf";
-        if (n.equals("loaves")) return "loaf";
-        if (n.equals("knives")) return "knife";
-
-        // General plural handling.
-        if (n.endsWith("ies") && n.length() > 3) {
-            return n.substring(0, n.length() - 3) + "y";
+        // Handle common plural forms without a full language-processing library.
+        if (value.endsWith("ies") && value.length() > 4) {
+            value = value.substring(0, value.length() - 3) + "y";
+        } else if (value.endsWith("oes") && value.length() > 4) {
+            value = value.substring(0, value.length() - 2);
+        } else if (value.endsWith("s") && !value.endsWith("ss") && value.length() > 3) {
+            value = value.substring(0, value.length() - 1);
         }
-
-        if (n.endsWith("oes") && n.length() > 3) {
-            return n.substring(0, n.length() - 2);
-        }
-
-        if ((n.endsWith("ches") || n.endsWith("shes")
-                || n.endsWith("xes") || n.endsWith("sses"))
-                && n.length() > 4) {
-            return n.substring(0, n.length() - 2);
-        }
-
-        if (n.endsWith("s") && !n.endsWith("ss")
-                && !n.endsWith("us") && n.length() > 3) {
-            return n.substring(0, n.length() - 1);
-        }
-
-        return n;
+        return value;
     }
 
-    // Identify which units can be compared with each other.
-    private static String getDimension(String unit) {
+    private static boolean compatibleUnit(String pantryUnit, String recipeUnit) {
+        String a = normalizeUnit(pantryUnit);
+        String b = normalizeUnit(recipeUnit);
+        if (a.equals(b)) return true;
 
-        String u = cleanUnit(unit);
-
-        switch (u) {
-            case "g":
-            case "kg":
-            case "oz":
-            case "lb":
-                return "weight";
-
-            case "ml":
-            case "l":
-            case "tsp":
-            case "tbsp":
-            case "cup":
-            case "fl oz":
-                return "volume";
-
-            case "pcs":
-                return "count";
-
-            default:
-                return "unknown";
-        }
+        // Convert common mass and volume units to grams and millilitres.
+        return (isMass(a) && isMass(b)) || (isVolume(a) && isVolume(b));
     }
 
-    // Convert common unit spellings to a standard form.
-    private static String cleanUnit(String unit) {
+    private static double convertQuantity(double quantity, String from, String to) {
+        String a = normalizeUnit(from);
+        String b = normalizeUnit(to);
+        if (a.equals(b)) return quantity;
 
-        if (unit == null) {
-            return "";
+        if (isMass(a) && isMass(b)) {
+            double grams = a.equals("kg") ? quantity * 1000 : quantity;
+            return b.equals("kg") ? grams / 1000 : grams;
         }
-
-        String u = unit.trim().toLowerCase(Locale.ROOT)
-                .replaceAll("\\s+", " ");
-
-        switch (u) {
-            case "gram":
-            case "grams":
-                return "g";
-
-            case "kilogram":
-            case "kilograms":
-                return "kg";
-
-            case "millilitre":
-            case "millilitres":
-            case "milliliter":
-            case "milliliters":
-                return "ml";
-
-            case "litre":
-            case "litres":
-            case "liter":
-            case "liters":
-                return "l";
-
-            case "piece":
-            case "pieces":
-            case "pc":
-                return "pcs";
-
-            case "teaspoon":
-            case "teaspoons":
-                return "tsp";
-
-            case "tablespoon":
-            case "tablespoons":
-                return "tbsp";
-
-            case "ounce":
-            case "ounces":
-                return "oz";
-
-            case "pound":
-            case "pounds":
-            case "lbs":
-                return "lb";
-
-            case "fluid ounce":
-            case "fluid ounces":
-            case "fl. oz.":
-            case "fl oz.":
-                return "fl oz";
-
-            case "cups":
-                return "cup";
-
-            default:
-                return u;
+        if (isVolume(a) && isVolume(b)) {
+            double ml = a.equals("l") ? quantity * 1000 : quantity;
+            return b.equals("l") ? ml / 1000 : ml;
         }
+        return 0;
     }
 
-    // Convert the quantity into grams, millilitres or pieces.
-    private static double convertToBase(double quantity, String unit) {
+    private static String normalizeUnit(String unit) {
+        if (unit == null) return "";
+        String value = unit.trim().toLowerCase(Locale.ROOT);
+        if (value.equals("grams") || value.equals("gram")) return "g";
+        if (value.equals("kilograms") || value.equals("kilogram")) return "kg";
+        if (value.equals("millilitres") || value.equals("milliliters")
+                || value.equals("millilitre") || value.equals("milliliter")) return "ml";
+        if (value.equals("litres") || value.equals("liters")
+                || value.equals("litre") || value.equals("liter")) return "l";
+        if (value.equals("slices")) return "slice";
+        if (value.equals("pieces")) return "piece";
+        if (value.equals("cloves")) return "clove";
+        return value;
+    }
 
-        String u = cleanUnit(unit);
+    private static boolean isMass(String unit) {
+        return unit.equals("g") || unit.equals("kg");
+    }
 
-        switch (u) {
-
-            // Weight is converted to grams.
-            case "kg":
-                return quantity * 1000;
-
-            case "oz":
-                return quantity * 28.3495;
-
-            case "lb":
-                return quantity * 453.59237;
-
-            // Volume is converted to millilitres.
-            case "l":
-                return quantity * 1000;
-
-            case "tsp":
-                return quantity * 5;
-
-            case "tbsp":
-                return quantity * 15;
-
-            case "cup":
-                return quantity * 240;
-
-            case "fl oz":
-                return quantity * 29.5735;
-
-            // g, ml and pcs are already in their base units.
-            default:
-                return quantity;
-        }
+    private static boolean isVolume(String unit) {
+        return unit.equals("ml") || unit.equals("l");
     }
 }

@@ -4,17 +4,34 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_margin="6dp"
-    app:cardCornerRadius="8dp"
-    app:cardElevation="4dp">
-
-    <TextView
-        android:id="@+id/tvRecipeName"
+    android:layout_marginBottom="10dp"
+    app:cardBackgroundColor="@color/white"
+    app:cardCornerRadius="16dp"
+    app:cardElevation="2dp"
+    app:strokeColor="#9867C5"
+    app:strokeWidth="1dp">
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:padding="16dp"
-        android:text="Recipe Name"
-        android:textSize="18sp"
-        android:textStyle="bold" />
-
-</com.google.android.material.card.MaterialCardView>
+        android:orientation="vertical"
+        android:padding="16dp">
+        <TextView
+            android:id="@+id/recipeName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Tomato and Egg Scramble"
+            android:textColor="#6C757D"
+            android:textSize="18sp"
+            android:textStyle="bold"/>
+        <TextView
+            android:id="@+id/recipeSummary"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="Tap to see ingredients and preparation steps"
+            android:maxLines="2"
+            android:ellipsize="end"
+            android:textColor="#6C757D"
+            android:textSize="14sp"/>
+    </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>

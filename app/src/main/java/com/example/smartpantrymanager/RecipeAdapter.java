@@ -1,4 +1,5 @@
 package com.example.smartpantrymanager;
+
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -8,12 +9,13 @@ import androidx.recyclerview.widget.RecyclerView;
 import java.util.ArrayList;
 import java.util.List;
 
-public class RecipeAdapter extends RecyclerView.Adapter<RecipeAdapter.VH>{
+public class RecipeAdapter extends RecyclerView.Adapter<RecipeAdapter.RecipeViewHolder> {
     public interface Listener {
         void onRecipeClick(Recipe recipe);
     }
 
-    private List<Recipe> recipes = new ArrayList<>();
+    private final List<Recipe> recipes = new ArrayList<>();
+    private final List<String> summaries = new ArrayList<>();
     private final Listener listener;
 
     public RecipeAdapter(Listener listener) {
@@ -21,37 +23,45 @@ public class RecipeAdapter extends RecyclerView.Adapter<RecipeAdapter.VH>{
     }
 
     public void setRecipes(List<Recipe> newRecipes) {
-        this.recipes = newRecipes;
+        setRecipes(newRecipes, null);
+    }
+
+    /** summaries is parallel to newRecipes (may be null); each is the second line of the card. */
+    public void setRecipes(List<Recipe> newRecipes, List<String> newSummaries) {
+        recipes.clear();
+        summaries.clear();
+        recipes.addAll(newRecipes);
+        if (newSummaries != null) summaries.addAll(newSummaries);
         notifyDataSetChanged();
     }
 
     @NonNull
     @Override
-    public VH onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-        View v = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_recipe, parent, false);
-        return new VH(v);
+    public RecipeViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+        View view = LayoutInflater.from(parent.getContext())
+                .inflate(R.layout.item_recipe, parent, false);
+        return new RecipeViewHolder(view);
     }
 
     @Override
-    public void onBindViewHolder(@NonNull VH holder, int position) {
+    public void onBindViewHolder(@NonNull RecipeViewHolder holder, int position) {
         Recipe recipe = recipes.get(position);
-        holder.tvRecipeName.setText(recipe.name);
+        holder.name.setText(recipe.getName());
+        String summary = position < summaries.size() ? summaries.get(position) : null;
+        holder.instructions.setText(summary == null || summary.isEmpty()
+                ? "Tap to see ingredients and preparation steps" : summary);
         holder.itemView.setOnClickListener(v -> listener.onRecipeClick(recipe));
     }
 
     @Override
-    public int getItemCount() {
-        return recipes.size();
-    }
+    public int getItemCount() { return recipes.size(); }
 
-    static class VH extends RecyclerView.ViewHolder {
-        TextView tvRecipeName;
-
-        VH(View v) {
-            super(v);
-            tvRecipeName = v.findViewById(R.id.tvRecipeName);
+    static class RecipeViewHolder extends RecyclerView.ViewHolder {
+        TextView name, instructions;
+        RecipeViewHolder(View itemView) {
+            super(itemView);
+            name = itemView.findViewById(R.id.recipeName);
+            instructions = itemView.findViewById(R.id.recipeSummary);
         }
     }
-
-
 }
